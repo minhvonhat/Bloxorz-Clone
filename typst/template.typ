@@ -135,23 +135,23 @@
     gutter: 12pt,
     align(center + horizon, image(logo_path, width: 100%)),
     [
-      #text(size: 11pt, weight: "bold")[TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN - ĐHQG TP.HCM] \
-      #v(2pt)
-      #text(size: 11pt, weight: "bold", fill: fit_blue)[KHOA CÔNG NGHỆ THÔNG TIN] \
-      #v(2pt)
-      #text(size: 10pt)[Môn học: *#course_id - #course_name*] \
-      #v(2pt)
-      #text(size: 10pt)[Giảng viên: *#instructor* | Lớp: *#class_id*]
+      #text(size: 13pt, weight: "bold")[TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN - ĐHQG TP.HCM] \
+      #v(10pt)
+      #text(size: 13pt, weight: "bold", fill: fit_blue)[KHOA CÔNG NGHỆ THÔNG TIN] \
+      #v(10pt)
+      #text(size: 11.5pt)[Môn học: *#course_id - #course_name*] \
+      #v(10pt)
+      #text(size: 11.5pt)[Giảng viên: *#instructor* | Lớp: *#class_id*]
     ],
   )
-  v(4pt)
+  v(18pt)
   line(length: 100%, stroke: 1.2pt + hcmus_blue)
-  v(8pt)
+  v(18pt)
   align(center)[
     #text(size: 16pt, weight: "bold", fill: hcmus_blue)[#report_title] \
-    #v(3pt)
+    #v(12pt)
     #text(size: 12pt, style: "italic")[#report_subtitle] \
-    #v(6pt)
+    #v(12pt)
     #block(
       width: 100%,
       inset: (x: 8pt, y: 6pt),
@@ -165,7 +165,6 @@
       ]
     ]
   ]
-  v(10pt)
 }
 
 // ==============================================================================
@@ -196,6 +195,7 @@
   set page(
     paper: "a4",
     margin: (left: 30mm, right: 20mm, top: 24mm, bottom: 20mm),
+    numbering: "1",
   )
 
   set text(
@@ -362,55 +362,8 @@
   show raw: set text(font: "Consolas", size: 10.5pt)
   show raw.where(block: true): set par(spacing: 0pt, leading: 0.45em)
 
-  // --- G. TRANG BÌA VÀ MỤC LỤC ---
-  if is_project_report {
-    // 1. Trang bìa
-    make_cover_page(
-      course_id: course_id,
-      course_name: course_name,
-      report_subtitle: report_subtitle,
-      report_title: report_title,
-      instructor: instructor,
-      class_id: class_id,
-      academic_year: academic_year,
-      students: students,
-      logo_path: logo_path,
-    )
-
-    // 2. Trang Mục lục (Đánh số La Mã ở góc dưới phải, không header)
-    set page(
-      numbering: "i",
-      header: none,
-      footer: context align(right, text(size: 9pt, weight: "bold", fill: dark_navy)[
-        Trang #counter(page).display("i")
-      ]),
-    )
-    counter(page).update(1)
-    set par(first-line-indent: 0pt)
-    outline(title: toc_title, depth: 3, indent: 0pt)
-    pagebreak()
-
-    // 3. Chuẩn bị nội dung chính
-    counter(page).update(1)
-    set page(numbering: "1")
-  } else {
-    // Chế độ bài tập ngắn
-    make_assignment_header(
-      course_id: course_id,
-      course_name: course_name,
-      report_subtitle: report_subtitle,
-      report_title: report_title,
-      instructor: instructor,
-      class_id: class_id,
-      academic_year: academic_year,
-      students: students,
-      logo_path: logo_path,
-    )
-    set page(numbering: "1")
-  }
-
-  // --- H. KÍCH HOẠT CHIC-HDR CHO CÁC TRANG NỘI DUNG ---
-  show: chic.with(
+  // --- G. ĐỊNH NGHĨA HỆ THỐNG HEADER/FOOTER (CHIC-HDR) ---
+  let chic_setup = chic.with(
     chic-header(
       side-width: (65%, 0%, 35%),
       left-side: context {
@@ -478,5 +431,55 @@
     chic-offset(8pt),
   )
 
-  body
+  // --- H. XUẤT NỘI DUNG THEO CHẾ ĐỘ ---
+  if is_project_report {
+    // 1. Trang bìa
+    make_cover_page(
+      course_id: course_id,
+      course_name: course_name,
+      report_subtitle: report_subtitle,
+      report_title: report_title,
+      instructor: instructor,
+      class_id: class_id,
+      academic_year: academic_year,
+      students: students,
+      logo_path: logo_path,
+    )
+
+    // 2. Trang Mục lục (Đánh số La Mã ở góc dưới phải, không header)
+    set page(
+      numbering: "i",
+      header: none,
+      footer: context align(right, text(size: 9pt, weight: "bold", fill: dark_navy)[
+        Trang #counter(page).display("i")
+      ]),
+    )
+    counter(page).update(1)
+    set par(first-line-indent: 0pt)
+    outline(title: toc_title, depth: 3, indent: 0pt)
+    pagebreak()
+
+    // 3. Chuẩn bị nội dung chính
+    counter(page).update(1)
+    set page(numbering: "1")
+    show: chic_setup
+
+    body
+  } else {
+    // Chế độ bài tập ngắn: kích hoạt chic_setup trước khi render nội dung
+    // để không phát sinh pagebreak ngầm do `set page` giữa chừng
+    show: chic_setup
+    make_assignment_header(
+      course_id: course_id,
+      course_name: course_name,
+      report_subtitle: report_subtitle,
+      report_title: report_title,
+      instructor: instructor,
+      class_id: class_id,
+      academic_year: academic_year,
+      students: students,
+      logo_path: logo_path,
+    )
+    body
+  }
 }
