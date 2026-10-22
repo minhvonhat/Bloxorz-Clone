@@ -1,251 +1,210 @@
-# A* cho Bloxorz — nhánh `vnhatminh`
+# A* độc lập — phần phụ trách trên nhánh `vnhatminh`
 
-Phần này đáp ứng yêu cầu A* ở mục 3.5, các chỉ số ở mục 3.2/3.6 và
-cơ chế bàn chơi ở mục 2 của `AI - Project 1.pdf`. Thuật toán tìm kiếm
-được tự viết bằng Python; `heapq` chỉ cung cấp hàng đợi ưu tiên.
-GUI, BFS, DFS và UCS chưa được triển khai trong nhánh này.
+Phần bàn giao chính là **một file `solvers/astar.py`**, dùng Python 3.10+
+và thư viện chuẩn. File có thể được sao chép sang dự án khác mà không cần
+`core/`, Pygame, loader, `solvers/common.py` hay cài package bằng pip.
+Môi trường kiểm thử hiện dùng Python 3.12.
 
-## 1. Chạy và kiểm thử
+Phạm vi là tự cài đặt A*, heuristic và thống kê theo mục 3.5/3.6 của đề.
+Nhóm làm core cung cấp trạng thái và luật chuyển trạng thái; nhóm GUI gọi solver.
+Bản này thay thế bản trước có triển khai thêm core/loader ngoài phần phân công.
+Các file core, loader, common và test cơ chế do bản trước thêm nội dung đã được
+đưa về trạng thái ban đầu. BFS/DFS/UCS, GUI và dữ liệu màn chơi được giữ nguyên.
 
-Tại thư mục gốc repository:
+## 1. Chạy mà không cài đặt thêm
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m solvers.astar levels/level_01.json
-.venv/bin/python -m pytest -q -p no:cacheprovider
-```
-
-Có thể giới hạn tìm kiếm:
+Từ thư mục repository:
 
 ```bash
-.venv/bin/python -m solvers.astar levels/level_01.json --timeout 10 --max-expanded 100000
+python3 solvers/astar.py
+python3 -m unittest tests.test_astar -v
 ```
 
-Màn `level_01.json` có lời giải tối ưu 9 bước:
+Lệnh đầu giải một **bảng chuyển trạng thái dựng sẵn** cho hành lang Bloxorz
+7 ô: đứng ở 0 → nằm ở 1/2 → đứng ở 3 → nằm ở 4/5 → đứng ở đích 6.
+Kết quả là bốn lần `right`, chi phí `4`. Đây là ví dụ sử dụng A*, không phải
+bộ luật game hay trình đọc `level_01.json`. Solver chưa thể tự đọc/giải JSON
+của dự án khi core/loader của nhóm chưa được nối vào.
 
-```text
-right, down, right, up, left, down, right, up, right
-```
+Lệnh thứ hai dùng `unittest` có sẵn trong Python. Không cần cài pytest.
+`requirements.txt` hiện có vẫn phục vụ dự án chung; riêng phần solver này
+không cần cài các package trong đó.
 
-CLI trả JSON chứa trạng thái, các hành động, chi phí và thống kê. Mã thoát:
-`0` nếu tìm được lời giải; `1` nếu vô nghiệm hoặc chạm giới hạn; `2` nếu
-tham số/dữ liệu đầu vào không hợp lệ. `main.py` vẫn trống nên hãy dùng CLI trên.
+Các file liên quan:
 
-## 2. File và trách nhiệm
-
-| File | Trách nhiệm |
+| File | Vai trò |
 |---|---|
-| `core/block.py` | `Block`, `Orientation`, tập ô khối chiếm |
-| `core/movement.py` | `Action`, bảng chuyển tư thế cho 12 trường hợp lăn |
-| `core/board.py` | `Board`, `Bridge`, `Switch`: dữ liệu tĩnh |
-| `core/game_state.py` | `GameState` bất biến, có thể hash |
-| `core/game_rules.py` | Sinh nước đi, xử lý cơ chế, kiểm tra thắng |
-| `levels/level_loader.py` | Đọc JSON hiện có, báo dữ liệu sai bằng `ValueError` |
-| `solvers/common.py` | `SearchProblem`, `BloxorzProblem`, `SearchResult` dùng chung |
-| `solvers/astar.py` | Heuristic, A*, API `solve`, CLI |
-| `tests/test_movement.py` | Tọa độ/tư thế, thao tác ngược |
-| `tests/test_game_rules.py` | Cơ chế thường và nâng cao |
-| `tests/test_levels.py` | JSON hợp lệ và các trường hợp đầu vào sai |
-| `tests/test_astar.py` | Tối ưu, phát lại, reopen, giới hạn, heuristic và thống kê |
+| `solvers/astar.py` | Toàn bộ API, A*, kết quả, heuristic và demo nhỏ |
+| `tests/test_astar.py` | Kiểm thử bằng thư viện chuẩn |
+| `docs/astar.md` | Hợp đồng tích hợp và giải thích thuật toán |
+| `README.md` | Lệnh chạy nhanh và liên kết tài liệu |
 
-Không thêm dependency ngoài `requirements.txt` hiện có; solver không import Pygame.
+## 2. API để thống nhất với nhóm
 
-## 3. Biểu diễn bài toán
+```python
+result = astar(
+    initial_state,
+    is_goal,
+    get_successors,
+    heuristic=None,
+    max_expanded=None,
+    timeout_seconds=None,
+    measure_memory=True,
+)
+```
 
-Tọa độ dùng **`(x, y)`**, tức `(cột, hàng)`, theo JSON trong repository.
-Đây là thứ tự ngược với ký hiệu `(r, c)` trong PDF. Gốc nằm trên trái;
-`x` tăng sang phải, `y` tăng xuống dưới.
+Các tùy chọn từ `max_expanded` trở đi phải truyền bằng tên.
+Ba đầu vào bắt buộc:
 
-`Block(x, y, orientation)` dùng ô trái nhất/trên cùng làm mốc khi nằm.
-Ví dụ khối ngang `(2, 3)` chiếm `(2, 3)` và `(3, 3)`.
+1. **`initial_state`**: trạng thái đầu hoặc trạng thái hiện tại khi người dùng
+   bấm Solve. Cần bất biến, hash được, ví dụ tuple hoặc dataclass frozen.
+2. **`is_goal(state) -> bool`**: core kiểm tra khối nguyên đứng trên đích.
+3. **`get_successors(state)`**: core sinh các bộ **`(action, next_state, cost)`**,
+   chỉ gồm nước đi hợp lệ, với chi phí hữu hạn và không âm.
 
-Một `GameState` chứa:
+`heuristic(state)` là hàm ước lượng hữu hạn, không âm. Để bảo đảm tối ưu,
+hàm phải **không đánh giá cao hơn chi phí còn lại thật** và bằng 0 tại đích.
+Bỏ qua tham số này tương đương dùng `h=0`, khi đó A* hoạt động như UCS.
 
-- `block`: khối nguyên hoặc `None` khi đã tách.
-- `open_bridges`: ID các cầu đang mở.
-- `locked_bridges`: ID cầu đã khóa bởi tác động permanent.
-- `cubes`: tọa độ hai khối đơn khi tách; thứ tự giữ danh tính hai khối.
-- `active_cube`: chỉ số khối đơn đang điều khiển.
+Solver không áp đặt tên thuộc tính của lớp trạng thái hay kiểu hành động.
+Nhóm có thể dùng string, enum hoặc một đối tượng khác cho action.
 
-Các trường này đều tham gia phép so sánh/hash. Hai trạng thái cùng tọa độ
-nhưng khác cầu, khóa cầu hoặc khối điều khiển phải được phân biệt, vì chúng
-có thể sinh nước đi khác nhau. Số bước, điểm số và hoạt ảnh không thuộc khóa.
-Các dataclass là `frozen`; dùng `tuple`/`frozenset` để tránh sửa khóa đã lưu.
+Ví dụ hoàn toàn độc lập, có thể chạy trực tiếp:
 
-Có bốn hành động `up/down/left/right` và thêm `switch` khi đã tách khối.
-Mỗi lần lăn khối nguyên hoặc dịch chuyển khối đơn có chi phí `1`.
-Đổi khối điều khiển không di chuyển vật thể nên có chi phí `0`.
-`solution_length` đếm số lần di chuyển, loại `switch`; `actions` vẫn giữ
-mọi thao tác để phát lại đúng. `len(actions)` có thể lớn hơn `solution_length`.
+```python
+from solvers.astar import astar
 
-Chỉ thắng khi **khối nguyên đứng trên ô đích**. Khối nằm ngang qua đích
-hoặc khối đơn trên đích đều chưa thắng.
+edges = {
+    "start": [("to_a", "a", 1), ("to_goal", "goal", 5)],
+    "a": [("finish", "goal", 1)],
+    "goal": [],
+}
+h = {"start": 2, "a": 1, "goal": 0}
+result = astar(
+    "start",
+    is_goal=lambda state: state == "goal",
+    get_successors=lambda state: edges[state],
+    heuristic=lambda state: h[state],
+)
+assert result.cost == 2
+assert result.actions == ("to_a", "finish")
+assert result.states == ("start", "a", "goal")
+```
 
-## 4. Chuyển trạng thái và các quy ước cơ chế
+Để tích hợp game thật, thay ba callback/dữ liệu trên bằng phần core đã được
+nhóm thống nhất. Tách/ghép, fragile, soft/heavy/split, bật/tắt cầu và khóa cầu
+đều nằm trong **callback của core**, không viết lại trong thuật toán A*.
 
-`step(board, state, action)` trả trạng thái mới hoặc `None` nếu không hợp lệ.
-Thứ tự xử lý:
+Khóa trạng thái phải bao gồm mọi yếu tố ảnh hưởng lượt sau: vị trí, tư thế,
+cầu mở/đóng, khóa cầu nếu có, vị trí hai khối đơn và khối đang điều khiển.
+Nếu chỉ lưu tọa độ, A* có thể gộp nhầm trạng thái và mất lời giải. Đừng sửa
+một đối tượng trạng thái sau khi đã đưa nó vào tìm kiếm. Các callback phải
+mô tả cùng một đồ thị trong suốt lượt tìm kiếm.
 
-1. Tính tọa độ/tư thế hoặc di chuyển khối đơn đang được chọn.
-2. Kiểm tra toàn bộ ô đỡ theo trạng thái cầu hiện tại và điều kiện ô dễ vỡ.
-3. Ghép hai khối đơn nếu kề nhau và `merge_when_adjacent` được bật.
-4. Xác định các công tắc vừa chuyển từ không kích hoạt sang kích hoạt.
-5. Áp dụng tác động cầu; áp dụng tách/dịch chuyển nếu có.
-6. Kiểm tra lại toàn bộ ô đỡ sau tác động. Đóng cầu dưới khối gây rơi.
-
-Các chi tiết PDF không mô tả đầy đủ được chốt như sau để GUI và solver dùng
-chung một mô hình xác định:
-
-- Công tắc chạy theo `trigger: enter`, khớp JSON hiện có. Đứng/đè liên tục
-  không đảo cầu liên tiếp. Đổi tư thế từ nằm sang đứng trên công tắc nặng
-  được tính là bắt đầu kích hoạt.
-- Soft nhận cả khối nguyên và khối đơn; heavy/split chỉ nhận khối nguyên đứng.
-- Khối nguyên đứng làm vỡ fragile; khối nằm hoặc một khối đơn có thể đi qua.
-- Permanent đặt cầu về trạng thái định sẵn. Nếu `lock_after_activation: true`,
-  các cầu liên kết không còn bị công tắc khác thay đổi. Nếu không khóa,
-  permanent chỉ đặt trạng thái mỗi lần kích hoạt.
-- Các tác động cầu cùng lượt được xử lý theo thứ tự công tắc trong JSON.
-- Tách đặt hai khối ở `effect.destinations`, chọn khối `0`. Nếu hai vị trí kề
-  nhau và bật tự ghép, chúng ghép ngay. Dịch chuyển không kích hoạt dây chuyền
-  công tắc tại vị trí đến trong cùng lượt.
-- Khối đơn không đi vào ô của khối đơn còn lại. Ghép xảy ra khi kề cạnh,
-  không yêu cầu chồng ô.
-- Ô đích được khai báo trong `tiles`, có thể đỡ khối nằm và khối đơn;
-  chỉ khối nguyên đứng mới kết thúc màn. Trạng thái thắng không có successor.
-- Khởi tạo lấy tư thế bắt đầu và trạng thái cầu từ JSON, chưa chạy tác động
-  công tắc tại vị trí bắt đầu; tác động xuất hiện qua các lượt di chuyển.
-
-Loader từ chối ID trùng, tham chiếu cầu thiếu, tọa độ ngoài bàn, ô cầu trùng
-sàn, đích fragile, kiểu dữ liệu sai và biến thể `split_rules` chưa hỗ trợ.
-Ví dụ `single_cube_can_win: true` bị từ chối thay vì âm thầm giải luật khác.
-Khi nhóm chọn quy ước khác, hãy đổi **hàm luật chơi và test chung**, rồi cho
-GUI gọi lại hàm đó; không viết một phiên bản luật khác trong A*.
-
-## 5. A* từng bước
-
-Với một trạng thái `s`:
+## 3. Các bước A*
 
 ```text
-g(s) = chi phí tốt nhất đã tìm được từ đầu đến s
-h(s) = cận dưới chi phí còn lại tới đích
+g(s): chi phí tốt nhất từ đầu đến s
+h(s): cận dưới chi phí còn lại
 f(s) = g(s) + h(s)
 ```
 
-Luồng trong `astar_search`:
+1. Khởi tạo `best_g[start] = 0` và đẩy start vào heap.
+2. Lấy phần tử có `f` nhỏ nhất. Heap chứa `(f, số_thứ_tự, g, state)`;
+   số thứ tự giúp xử lý hòa mà không phải so sánh hai đối tượng state.
+3. Nếu `g` trong heap đã cũ so với `best_g`, bỏ qua.
+4. Nếu là đích, lần theo `parents` để dựng lại hành động và trạng thái.
+5. Duyệt successors, tính `candidate_g = g + cost`.
+6. Chỉ khi `candidate_g` nhỏ hơn giá trị cũ mới cập nhật cha và đẩy vào heap.
+7. Hết heap là vô nghiệm; chạm giới hạn trả trạng thái dừng riêng.
 
-1. Đưa trạng thái đầu vào heap với `g=0`; lưu `best_g[start]=0`.
-2. Lấy mục có `f` nhỏ nhất. Heap lưu `(f, số_thứ_tự, g, state)`;
-   số thứ tự xử lý hòa mà không so sánh trực tiếp các `GameState`.
-3. Bỏ mục cũ nếu `g` của nó khác `best_g[state]`.
-4. Nếu đây là đích, dừng và lần theo `parents` để dựng lại `actions/states`.
-5. Nếu chưa phải đích, sinh các nước đi hợp lệ.
-6. Tính `candidate_g = g + cost`. Chỉ khi nhỏ hơn `best_g` cũ mới cập nhật
-   cha, hành động và đẩy mục mới vào heap.
-7. Nếu heap hết, kết luận vô nghiệm. Nếu dừng bởi thời gian/số nút, trả
-   `timeout` hoặc `limit_reached`, không kết luận vô nghiệm.
+Không đánh dấu một state là đã đóng vĩnh viễn. Đường tốt hơn sẽ mở lại
+state, cần thiết với heuristic admissible nhưng không consistent.
+Cập nhật theo so sánh nhỏ hơn nghiêm ngặt tránh vòng lặp do cạnh chi phí 0.
 
-Không khóa vĩnh viễn một trạng thái sau lần mở rộng đầu tiên. Nếu tìm được
-`g` tốt hơn, A* mở lại trạng thái đó. Điều này quan trọng khi sau này sử dụng
-heuristic admissible nhưng không consistent. So sánh cải thiện **nghiêm ngặt**
-cũng ngăn vòng lặp vô hạn do hai thao tác `switch` miễn phí liên tiếp.
+## 4. Heuristic Bloxorz không phụ thuộc lớp core
 
-`astar_search` nhận `SearchProblem` tổng quát và một hàm ước lượng, nên nhóm
-có thể tái sử dụng hợp đồng trạng thái/kết quả cho các solver khác. Mặc định
-hàm tổng quát dùng `h=0`. `solve(board)` truyền vào heuristic Bloxorz.
-
-## 6. Heuristic và lập luận đúng đắn
-
-Với màn không có công tắc split/dịch chuyển, đặt:
-
-```text
-d(s) = min(|x - goal_x| + |y - goal_y|) trên các ô khối đang chiếm
-h(s) = max(ceil(d(s) / 2), 1 nếu khối nằm, 0 nếu khối đứng)
-```
-
-**Admissible:** một lần lăn làm khoảng cách từ ô gần đích nhất giảm tối đa
-`2`. Do đó cần ít nhất `ceil(d/2)` lần lăn. Một khối đang nằm cũng cần ít
-nhất một lần lăn để đứng ở đích. Lấy `max` của hai cận dưới vẫn là cận dưới;
-không cộng chúng vì có thể tính hai lần cùng một bước. Bỏ qua void, fragile
-và cầu chỉ làm bài toán dễ hơn, nên không làm cận dưới tăng quá chi phí thật.
-
-**Consistent trên các trạng thái khối nguyên:** với cạnh chi phí `1`,
-`d(s) <= d(s') + 2`, suy ra `ceil(d(s)/2) <= 1 + ceil(d(s')/2)`.
-Hạng tư thế chỉ là `0/1` nên cũng consistent. `max` giữ tính chất này.
-Tại đích, cả hai hạng bằng `0`.
-
-**Màn có split:** dịch chuyển có thể đưa khối đến rất gần đích chỉ sau một
-lượt; khoảng cách Manhattan trước dịch chuyển không còn là cận dưới tin cậy.
-Bản hiện tại dùng `h=0` trên **toàn bộ màn có split**, kể cả trước khi tách.
-Khi đó A* hoạt động như UCS với cùng chi phí, giữ tối ưu nhưng ít định hướng.
-Đây là giới hạn hiệu năng đã biết. Không chỉ đặt `h=0` sau lúc tách, vì các
-trạng thái trước dịch chuyển cũng có thể bị đánh giá quá cao. Một cải tiến
-sau này là khoảng cách trên đồ thị nới lỏng có cả các cạnh dịch chuyển.
-Trạng thái khối đơn truyền riêng vào API cũng dùng `h=0`.
-
-Chứng minh áp dụng cho chi phí mặc định ở mục 3. Nếu dùng chi phí khác qua
-`SearchProblem`, người gọi phải cung cấp heuristic tương thích; hằng `0`
-vẫn an toàn khi chi phí cạnh không âm. Code từ chối chi phí/heuristic âm,
-NaN và vô cực.
-
-## 7. Chỉ số thực nghiệm
-
-| Trường kết quả | Định nghĩa |
-|---|---|
-| `search_time_seconds` | Thời gian tìm kiếm và dựng đường đi qua `perf_counter` |
-| `peak_memory_bytes` | Đỉnh cấp phát Python trong lượt tìm kiếm qua `tracemalloc` |
-| `expanded_nodes` | Số lần lấy trạng thái không phải đích ra và duyệt successors; tính cả reopen |
-| `generated_nodes` | Trạng thái đầu + số cập nhật `g` tốt hơn; có thể tính lại cùng một trạng thái |
-| `solution_length` | Số lần lăn/dịch chuyển khối; không đếm chọn khối |
-| `cost` | Tổng chi phí; mặc định bằng `solution_length` |
-
-Bộ nhớ trên không phải RSS toàn tiến trình và không gồm bàn chơi đã tạo
-trước khi đo. `tracemalloc` có overhead thời gian; khi so sánh các solver,
-hãy dùng cùng phương pháp đo và cùng tập màn. Không biến số nút mở rộng
-thành tuyên bố tốc độ trên mọi màn.
-
-Nếu chương trình đã bật `tracemalloc`, mặc định solver báo lỗi để không
-reset thống kê của nơi khác. Có thể truyền `measure_memory=False` và đo
-bên ngoài; khi đó `peak_memory_bytes` là `None`. Không chạy đồng thời nhiều
-lượt đo dùng bộ theo dõi `tracemalloc` toàn tiến trình.
-
-## 8. Tích hợp vào GUI
+File cung cấp hàm hỗ trợ:
 
 ```python
-from levels.level_loader import load_level
-from solvers.astar import solve
+from solvers.astar import bloxorz_heuristic
 
-board = load_level("levels/level_01.json")
-result = solve(board, timeout_seconds=10, max_expanded=100_000)
-if result.solved:
-    for action, next_state in zip(result.actions, result.states[1:]):
-        # Vẽ/animate next_state theo action; xử lý cả action == "switch".
-        print(action.value, next_state)
-else:
-    print(result.status)
+h = bloxorz_heuristic(
+    occupied_cells=[(4, 0), (5, 0)],
+    goal=(6, 0),
+    standing=False,
+    has_teleports=False,
+    split=False,
+    min_move_cost=1.0,
+)
+assert h == 1
 ```
 
-Để giải tiếp từ giữa màn: `solve(board, start=current_game_state)`.
-Để người chơi di chuyển: gọi `core.game_rules.step(board, state, action)`;
-`None` biểu thị nước đi rơi/không hợp lệ. Chạy solver trong worker phù hợp
-với GUI và chỉ cập nhật giao diện ở luồng giao diện. Có thể giới hạn thời
-gian/số nút để tránh tìm kiếm quá lâu trên màn lớn.
+Người gọi lấy `occupied_cells` và `standing` từ lớp trạng thái của nhóm.
+Tọa độ là các cặp số nguyên `(x, y)` và phải cùng hệ với goal.
+Đặt `d` là Manhattan nhỏ nhất từ các ô đang chiếm đến đích:
 
-## 9. Kiểm chứng
+```text
+h = max(ceil(d / 2), 0 nếu đứng hoặc 1 nếu nằm) × min_move_cost
+```
 
-Test bao gồm toàn bộ 12 chuyển tư thế, rơi/void, ô dễ vỡ, soft/heavy,
-toggle/permanent và khóa cầu, cầu đóng dưới khối, split, chọn khối, ghép,
-đích, kiểm tra JSON và phát lại mọi trạng thái lời giải.
+Một lần lăn làm khoảng cách từ ô gần đích nhất giảm tối đa 2, nên
+`ceil(d/2)` là cận dưới số bước. Khối nằm cần ít nhất một lần lăn để đứng.
+Lấy `max` giữ cận dưới; cộng hai hạng có thể đếm trùng bước.
+Bỏ qua void/fragile/cầu làm bài toán dễ hơn nên vẫn admissible.
+Với khối nguyên không dịch chuyển, mỗi hạng consistent trên cạnh lăn;
+`max` cũng consistent. Tại đích h bằng 0.
 
-Riêng A* được kiểm tra reopen với heuristic admissible không consistent,
-heap có mục cũ, hòa ưu tiên giữa các đối tượng không so sánh được, chu trình
-chi phí `0`, màn vô nghiệm, trạng thái đầu đã thắng và trạng thái giữa màn.
-Test giới hạn và đo bộ nhớ kiểm tra cả các nhánh dừng/lỗi.
+`min_move_cost` phải là cận dưới chi phí mỗi lần **dịch chuyển hình học**.
+Mặc định là 1. Nếu có bước giá 0.5, truyền tối đa 0.5, không giữ mặc định 1.
+Nếu không biết một cận dưới dương, dùng 0. Chọn khối điều khiển có thể miễn
+phí vì không thay đổi các ô đang chiếm.
 
-Chi phí lời giải được đối chiếu với bộ kiểm chứng Dijkstra độc lập dùng
-chọn min tuyến tính trên màn mẫu, màn buộc mở cầu, màn buộc dịch chuyển và
-đổi khối, cùng 30 bàn nhỏ với seed cố định. Bộ kiểm chứng dùng chung hàm
-luật chơi; bảng chuyển tư thế và các cơ chế được kiểm tra riêng để giảm
-nguy cơ hai thuật toán cùng dùng một lỗi luật chơi. Heuristic còn được
-kiểm tra admissibility/consistency trên toàn bộ trạng thái hợp lệ của một
-bàn nhỏ bằng khoảng cách thật tính ngược từ đích.
+Nếu màn có **bất kỳ split/teleport nào**, truyền `has_teleports=True` cho
+**tất cả trạng thái**, kể cả trước khi tách. Hàm trả 0 để giữ tối ưu;
+Manhattan có thể đánh giá quá cao do dịch chuyển. Trạng thái đã tách cũng
+trả 0 khi `split=True`. Đây là fallback an toàn, có hiệu năng như UCS.
+Muốn heuristic mạnh hơn cho dịch chuyển cần thiết kế mô hình nới lỏng có
+các cạnh dịch chuyển; bản hiện tại chưa làm điều đó.
+
+## 5. Kết quả và thống kê
+
+| Trường | Ý nghĩa |
+|---|---|
+| `status` | `solved`, `unsolvable`, `limit_reached`, `timeout` |
+| `actions` | Tuple hành động để GUI phát lại |
+| `states` | Tuple trạng thái, gồm cả đầu và đích khi tìm được lời giải |
+| `cost` | Tổng chi phí; `None` khi chưa tìm được lời giải |
+| `solution_length` | `len(actions)`, đếm mọi hành động kể cả giá 0 |
+| `expanded_nodes` | Số lần bắt đầu duyệt successors, có tính reopen, không tính đích |
+| `generated_nodes` | Start + số lần tìm được g tốt hơn, có thể lặp một state |
+| `search_time_seconds` | Thời gian tìm kiếm/dựng lời giải bằng `perf_counter` |
+| `peak_memory_bytes` | Đỉnh cấp phát Python trong lượt tìm kiếm bằng `tracemalloc` |
+
+Chi phí và độ dài là hai chỉ số khác nhau. Nếu nhóm quy định `switch`
+miễn phí, cost không tăng nhưng action vẫn xuất hiện trong lời giải và
+`solution_length`. Muốn thống kê riêng số lần lăn, lọc theo action của nhóm.
+
+Giới hạn thời gian được kiểm tra giữa các lần mở rộng và callback yield;
+không thể ngắt một callback đang chặn vô hạn. Chạm giới hạn không đồng
+nghĩa vô nghiệm. Bộ đếm node không phải số lượng trạng thái duy nhất.
+
+`tracemalloc` đo cấp phát Python mới trong tìm kiếm, không phải RSS và không
+gồm đồ thị tạo sẵn trước đó. Nó có overhead thời gian. Khi so sánh solver,
+dùng cùng định nghĩa, tập dữ liệu và cách đo. Nếu đã có tracing bên ngoài,
+dùng `measure_memory=False`; bộ nhớ kết quả là `None`. Solver không reset
+trace có sẵn. Không chạy đồng thời nhiều lượt đo qua tracemalloc toàn tiến trình.
+
+## 6. Kiểm chứng
+
+Bộ test dùng unittest: đường ngắn có trọng số và phát lại, reopen, heap cũ,
+hòa ưu tiên, vòng lặp giá 0, state tùy ý bao gồm bridge configuration, state
+`None`, vô nghiệm, đầu đã thắng, giới hạn, dữ liệu số sai và dọn tracing khi
+callback lỗi. Heuristic được kiểm tra trên hành lang Bloxorz dựng sẵn.
+
+A* được đối chiếu với Dijkstra độc lập dùng chọn min tuyến tính trên 40 đồ
+thị có trọng số với seed cố định, bao gồm cạnh 0 và heuristic admissible có
+thể không consistent. Một test sao chép **chỉ astar.py** sang thư mục tạm
+và chạy Python với `-I -S` để xác minh không dựa vào repo/site-packages.
+Các test này xác minh phần solver; chưa xác minh gameplay nâng cao của core
+mà nhóm sẽ tích hợp sau.

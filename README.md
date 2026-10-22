@@ -1,17 +1,19 @@
 # Bloxorz
 
-## A* solver
+## A* solver độc lập
 
-Đã có A* chạy độc lập qua CLI, hỗ trợ cầu/công tắc và tách/ghép khối:
+Phần A* nằm trọn trong `solvers/astar.py`, chỉ dùng thư viện chuẩn Python
+(Python 3.10+). Không cần cài Pygame/pytest để chạy solver và kiểm thử này:
 
 ```bash
-python -m solvers.astar levels/level_01.json
-python -m pytest
+python3 solvers/astar.py
+python3 -m unittest tests.test_astar -v
 ```
 
-Cài dependency trong `requirements.txt` trước khi chạy. Xem
-[hướng dẫn A*](docs/astar.md) để đọc thiết kế trạng thái, heuristic, thống kê,
-quy ước cơ chế và API tích hợp GUI. `main.py` và GUI hiện chưa triển khai;
+Lệnh đầu chạy demo bằng bảng chuyển trạng thái dựng sẵn. Để tích hợp game,
+nhóm core cung cấp trạng thái, hàm kiểm tra đích và hàm sinh nước đi hợp lệ.
+Xem [hướng dẫn A*](docs/astar.md) về API, heuristic và thống kê.
+`main.py`, core/loader và GUI vẫn là bộ khung chưa triển khai;
 mô tả bên dưới là thiết kế tổng thể dự kiến của dự án.
 
 Tài liệu này mô tả cấu trúc dự án và vai trò của các thành phần đã tạo cho game
